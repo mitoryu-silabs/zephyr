@@ -161,6 +161,17 @@ static void reset_pending_event(enum pending_events event)
 	atomic_clear_bit(pending_events, event);
 }
 
+bool platformRadioIsPending(void)
+{
+	for (int event = 0; event < PENDING_EVENT_COUNT; event++) {
+		if (is_pending_event_set((enum pending_events)event)) {
+			return true;
+		}
+	}
+
+	return k_work_is_pending(&tx_job) || sState == OT_RADIO_STATE_TRANSMIT;
+}
+
 void energy_detected(const struct device *dev, int16_t max_ed)
 {
 	if (dev == radio_dev) {
@@ -247,7 +258,9 @@ void handle_radio_event(const struct device *dev, enum ieee802154_event evt,
 		}
 		break;
 	case IEEE802154_EVENT_RX_OFF:
-		set_pending_event(PENDING_EVENT_SLEEP);
+		if (sState == OT_RADIO_STATE_RECEIVE) {
+			set_pending_event(PENDING_EVENT_SLEEP);
+		}
 		break;
 	default:
 		/* do nothing - ignore event */
@@ -801,12 +814,16 @@ otError otPlatRadioSleep(otInstance *aInstance)
 {
 	ARG_UNUSED(aInstance);
 
-	if (sState != OT_RADIO_STATE_SLEEP && sState != OT_RADIO_STATE_RECEIVE) {
+	if (sState == OT_RADIO_STATE_SLEEP) {
+		return OT_ERROR_NONE;
+	}
+
+	if (sState != OT_RADIO_STATE_RECEIVE) {
 		return OT_ERROR_INVALID_STATE;
 	}
 
-	radio_api->stop(radio_dev);
 	sState = OT_RADIO_STATE_SLEEP;
+	radio_api->stop(radio_dev);
 
 	return OT_ERROR_NONE;
 }
