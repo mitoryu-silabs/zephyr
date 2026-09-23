@@ -8,10 +8,11 @@
 
 #include <psa/crypto.h>
 
-#include <stdint.h>
 #include <string.h>
 
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 #include <zephyr/kernel.h>
+#endif
 #include <zephyr/sys/__assert.h>
 
 #if !defined(CONFIG_BUILD_WITH_TFM) && defined(CONFIG_OPENTHREAD_CRYPTO_PSA)
@@ -121,27 +122,12 @@ static bool checkContext(otCryptoContext *aContext, size_t aMinSize)
 	return aContext != NULL && aContext->mContext != NULL && aContext->mContextSize >= aMinSize;
 }
 
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 /*
- * OpenThread either provides a buffer in otCryptoContext, or leaves mContext
- * NULL and expects the platform to allocate
- * (OPENTHREAD_CONFIG_CRYPTO_PLATFORM_ALLOCS_CONTEXT). This file is compiled
- * independently of the OpenThread core, including pre-built libraries, so
- * allocation is chosen at runtime from mContext rather than the compile-time
- * config of this translation unit.
- *
  * OpenThread aligns core-side context storage to uint64_t. Use a private heap
  * so this does not depend on CONFIG_HEAP_MEM_POOL_SIZE.
  */
 K_HEAP_DEFINE(ot_crypto_ctx_heap, CONFIG_OPENTHREAD_CRYPTO_CONTEXT_HEAP_SIZE);
-
-static bool contextFromPlatformHeap(const void *aPtr)
-{
-	const uint8_t *base = ot_crypto_ctx_heap.heap.init_mem;
-	const uint8_t *end = base + ot_crypto_ctx_heap.heap.init_bytes;
-	const uint8_t *ptr = aPtr;
-
-	return ptr != NULL && ptr >= base && ptr < end;
-}
 
 static otError allocateCryptoContext(otCryptoContext *aContext, size_t aContextSize)
 {
@@ -151,21 +137,14 @@ static otError allocateCryptoContext(otCryptoContext *aContext, size_t aContextS
 		return OT_ERROR_INVALID_ARGS;
 	}
 
-	if (aContext->mContext == NULL) {
-		ctx = k_heap_aligned_alloc(&ot_crypto_ctx_heap, sizeof(uint64_t), aContextSize,
-					   K_NO_WAIT);
-		if (ctx == NULL) {
-			return OT_ERROR_NO_BUFS;
-		}
-
-		aContext->mContext = ctx;
-		aContext->mContextSize = (uint16_t)aContextSize;
-	}
-
-	if ((size_t)aContext->mContextSize < aContextSize) {
+	ctx = k_heap_aligned_alloc(&ot_crypto_ctx_heap, sizeof(uint64_t), aContextSize,
+				   K_NO_WAIT);
+	if (ctx == NULL) {
 		return OT_ERROR_NO_BUFS;
 	}
 
+	aContext->mContext = ctx;
+	aContext->mContextSize = (uint16_t)aContextSize;
 	memset(aContext->mContext, 0, aContextSize);
 
 	return OT_ERROR_NONE;
@@ -178,13 +157,11 @@ static void freeCryptoContext(otCryptoContext *aContext)
 	}
 
 	memset(aContext->mContext, 0, aContext->mContextSize);
-
-	if (contextFromPlatformHeap(aContext->mContext)) {
-		k_heap_free(&ot_crypto_ctx_heap, aContext->mContext);
-		aContext->mContext = NULL;
-		aContext->mContextSize = 0;
-	}
+	k_heap_free(&ot_crypto_ctx_heap, aContext->mContext);
+	aContext->mContext = NULL;
+	aContext->mContextSize = 0;
 }
+#endif /* CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT */
 
 void otPlatCryptoInit(void)
 {
@@ -296,12 +273,18 @@ bool otPlatCryptoHasKey(otCryptoKeyRef aKeyRef)
 otError otPlatCryptoHmacSha256Init(otCryptoContext *aContext)
 {
 	psa_mac_operation_t *operation;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
 
 	error = allocateCryptoContext(aContext, sizeof(psa_mac_operation_t));
 	if (error != OT_ERROR_NONE) {
 		return error;
 	}
+#else
+	if (!checkContext(aContext, sizeof(psa_mac_operation_t))) {
+		return OT_ERROR_INVALID_ARGS;
+	}
+#endif
 
 	operation = aContext->mContext;
 	memset(operation, 0, sizeof(*operation));
@@ -312,17 +295,24 @@ otError otPlatCryptoHmacSha256Init(otCryptoContext *aContext)
 otError otPlatCryptoHmacSha256Deinit(otCryptoContext *aContext)
 {
 	psa_mac_operation_t *operation;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
+#endif
 
 	if (!checkContext(aContext, sizeof(psa_mac_operation_t))) {
 		return OT_ERROR_INVALID_ARGS;
 	}
 
 	operation = aContext->mContext;
+
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	error = psaToOtError(psa_mac_abort(operation));
 	freeCryptoContext(aContext);
 
 	return error;
+#else
+	return psaToOtError(psa_mac_abort(operation));
+#endif
 }
 
 otError otPlatCryptoHmacSha256Start(otCryptoContext *aContext, const otCryptoKey *aKey)
@@ -372,12 +362,18 @@ otError otPlatCryptoHmacSha256Finish(otCryptoContext *aContext, uint8_t *aBuf, s
 otError otPlatCryptoHkdfInit(otCryptoContext *aContext)
 {
 	psa_key_derivation_operation_t *operation;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
 
 	error = allocateCryptoContext(aContext, sizeof(psa_key_derivation_operation_t));
 	if (error != OT_ERROR_NONE) {
 		return error;
 	}
+#else
+	if (!checkContext(aContext, sizeof(psa_key_derivation_operation_t))) {
+		return OT_ERROR_INVALID_ARGS;
+	}
+#endif
 
 	operation = aContext->mContext;
 
@@ -497,28 +493,41 @@ otError otPlatCryptoHkdfExpand(otCryptoContext *aContext,
 otError otPlatCryptoHkdfDeinit(otCryptoContext *aContext)
 {
 	psa_key_derivation_operation_t *operation;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
+#endif
 
 	if (!checkContext(aContext, sizeof(psa_key_derivation_operation_t))) {
 		return OT_ERROR_INVALID_ARGS;
 	}
 
 	operation = aContext->mContext;
+
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	error = psaToOtError(psa_key_derivation_abort(operation));
 	freeCryptoContext(aContext);
 
 	return error;
+#else
+	return psaToOtError(psa_key_derivation_abort(operation));
+#endif
 }
 
 otError otPlatCryptoAesInit(otCryptoContext *aContext)
 {
 	psa_key_id_t *key_ref;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
 
 	error = allocateCryptoContext(aContext, sizeof(psa_key_id_t));
 	if (error != OT_ERROR_NONE) {
 		return error;
 	}
+#else
+	if (!checkContext(aContext, sizeof(psa_key_id_t))) {
+		return OT_ERROR_INVALID_ARGS;
+	}
+#endif
 
 	key_ref = aContext->mContext;
 	*key_ref = (psa_key_id_t)0; /* In TF-M 1.5.0 this can be replaced with PSA_KEY_ID_NULL */
@@ -560,7 +569,9 @@ otError otPlatCryptoAesEncrypt(otCryptoContext *aContext, const uint8_t *aInput,
 
 otError otPlatCryptoAesFree(otCryptoContext *aContext)
 {
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	freeCryptoContext(aContext);
+#endif
 
 	return OT_ERROR_NONE;
 }
@@ -568,12 +579,18 @@ otError otPlatCryptoAesFree(otCryptoContext *aContext)
 otError otPlatCryptoSha256Init(otCryptoContext *aContext)
 {
 	psa_hash_operation_t *operation;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
 
 	error = allocateCryptoContext(aContext, sizeof(psa_hash_operation_t));
 	if (error != OT_ERROR_NONE) {
 		return error;
 	}
+#else
+	if (!checkContext(aContext, sizeof(psa_hash_operation_t))) {
+		return OT_ERROR_INVALID_ARGS;
+	}
+#endif
 
 	operation = aContext->mContext;
 	memset(operation, 0, sizeof(*operation));
@@ -584,17 +601,24 @@ otError otPlatCryptoSha256Init(otCryptoContext *aContext)
 otError otPlatCryptoSha256Deinit(otCryptoContext *aContext)
 {
 	psa_hash_operation_t *operation;
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	otError error;
+#endif
 
 	if (!checkContext(aContext, sizeof(psa_hash_operation_t))) {
 		return OT_ERROR_INVALID_ARGS;
 	}
 
 	operation = aContext->mContext;
+
+#ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	error = psaToOtError(psa_hash_abort(operation));
 	freeCryptoContext(aContext);
 
 	return error;
+#else
+	return psaToOtError(psa_hash_abort(operation));
+#endif
 }
 
 otError otPlatCryptoSha256Start(otCryptoContext *aContext)
