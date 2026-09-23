@@ -12,10 +12,7 @@
 #include <string.h>
 
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/sys/__assert.h>
-
-LOG_MODULE_REGISTER(net_otPlat_crypto, CONFIG_OPENTHREAD_PLATFORM_LOG_LEVEL);
 
 #if !defined(CONFIG_BUILD_WITH_TFM) && defined(CONFIG_OPENTHREAD_CRYPTO_PSA)
 #include <zephyr/settings/settings.h>
@@ -158,8 +155,6 @@ static otError allocate_crypto_context(otCryptoContext *aContext, size_t aContex
 		ctx = k_heap_aligned_alloc(&ot_crypto_ctx_heap, sizeof(uint64_t), aContextSize,
 					   K_NO_WAIT);
 		if (ctx == NULL) {
-			LOG_ERR("Failed to allocate %u-byte crypto context",
-				(unsigned int)aContextSize);
 			return OT_ERROR_NO_BUFS;
 		}
 
