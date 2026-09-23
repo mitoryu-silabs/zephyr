@@ -201,6 +201,17 @@ config OPENTHREAD_CRYPTO_PSA
 	  Use PSA Crypto API as backend for cryptographic operations instead
 	  of legacy Mbed TLS.
 
+config OPENTHREAD_CRYPTO_CONTEXT_HEAP_SIZE
+	int "Heap size for platform-allocated OpenThread crypto contexts"
+	depends on OPENTHREAD_CRYPTO_PSA
+	default 3072
+	help
+	  Size in bytes of a private heap used when the OpenThread core
+	  requests that the platform allocate crypto operation contexts
+	  (OPENTHREAD_CONFIG_CRYPTO_PLATFORM_ALLOCS_CONTEXT). The default
+	  covers several concurrent AES, HMAC, SHA-256, and HKDF operations.
+	  Increase this value if platform crypto context allocation fails.
+
 if OPENTHREAD_SECURITY_DEFAULT_CONFIG
 
 config OPENTHREAD_CRYPTO_PSA_CONFIG
