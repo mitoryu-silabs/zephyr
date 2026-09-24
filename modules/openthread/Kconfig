@@ -207,9 +207,6 @@ config OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	help
 	  Allocate crypto operation contexts in the platform layer instead of
 	  the OpenThread core (OPENTHREAD_CONFIG_CRYPTO_PLATFORM_ALLOCS_CONTEXT).
-	  Enable this when the linked OpenThread library was built with that
-	  option, including pre-built libraries. Leave disabled for the
-	  in-tree OpenThread sources, which provide their own context buffers.
 
 config OPENTHREAD_CRYPTO_CONTEXT_HEAP_SIZE
 	int "Heap size for platform-allocated OpenThread crypto contexts"
@@ -217,9 +214,7 @@ config OPENTHREAD_CRYPTO_CONTEXT_HEAP_SIZE
 	default 3072
 	help
 	  Size in bytes of a private heap used to allocate crypto operation
-	  contexts. The default covers several concurrent AES, HMAC, SHA-256,
-	  and HKDF operations. Increase this value if platform crypto context
-	  allocation fails.
+	  contexts.
 
 if OPENTHREAD_SECURITY_DEFAULT_CONFIG
 
