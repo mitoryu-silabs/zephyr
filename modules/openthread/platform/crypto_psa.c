@@ -124,11 +124,10 @@ static bool checkContext(otCryptoContext *aContext, size_t aMinSize)
 
 #ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 /*
- * OpenThread aligns core-side context storage to uint64_t. Use a private heap
- * so this does not depend on CONFIG_HEAP_MEM_POOL_SIZE.
+ * OpenThread aligns core-side context storage to uint64_t. k_malloc() is only
+ * pointer-aligned, and on 32-bit targets the system heap stores a back-pointer
+ * just before the returned address, so use k_aligned_alloc().
  */
-K_HEAP_DEFINE(ot_crypto_ctx_heap, CONFIG_OPENTHREAD_CRYPTO_CONTEXT_HEAP_SIZE);
-
 static otError allocateCryptoContext(otCryptoContext *aContext, size_t aContextSize)
 {
 	void *ctx;
@@ -137,8 +136,7 @@ static otError allocateCryptoContext(otCryptoContext *aContext, size_t aContextS
 		return OT_ERROR_INVALID_ARGS;
 	}
 
-	ctx = k_heap_aligned_alloc(&ot_crypto_ctx_heap, sizeof(uint64_t), aContextSize,
-				   K_NO_WAIT);
+	ctx = k_aligned_alloc(sizeof(uint64_t), aContextSize);
 	if (ctx == NULL) {
 		return OT_ERROR_NO_BUFS;
 	}
@@ -157,7 +155,7 @@ static void freeCryptoContext(otCryptoContext *aContext)
 	}
 
 	memset(aContext->mContext, 0, aContext->mContextSize);
-	k_heap_free(&ot_crypto_ctx_heap, aContext->mContext);
+	k_free(aContext->mContext);
 	aContext->mContext = NULL;
 	aContext->mContextSize = 0;
 }
