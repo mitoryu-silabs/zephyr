@@ -618,21 +618,24 @@ otError otPlatCryptoAesEncrypt(otCryptoContext *aContext, const uint8_t *aInput,
 
 otError otPlatCryptoAesFree(otCryptoContext *aContext)
 {
-	
+	otError error = OT_ERROR_NONE;
 
 	if (!checkContext(aContext, sizeof(psa_key_id_t))) {
 		return OT_ERROR_INVALID_ARGS;
 	}
 
 	if (!IS_ENABLED(CONFIG_OPENTHREAD_PLATFORM_KEY_REF)) {
-		return destroy_literal_key(aContext->mContext);
+		error = destroy_literal_key(aContext->mContext);
+		if (error != OT_ERROR_NONE) {
+			return error;
+		}
 	}
 
 #ifdef CONFIG_OPENTHREAD_CRYPTO_PLATFORM_ALLOCS_CONTEXT
 	freeCryptoContext(aContext);
 #endif
 
-	return OT_ERROR_NONE;
+	return error;
 }
 
 otError otPlatCryptoSha256Init(otCryptoContext *aContext)
