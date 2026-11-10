@@ -659,9 +659,50 @@ ZTEST(openthread_radio, test_radio_state_test)
 	zassert_equal(power, set_txpower_mock_fake.arg1_val);
 	zassert_equal(1, start_mock_fake.call_count);
 	zassert_equal_ptr(radio, start_mock_fake.arg0_val);
+#ifdef CONFIG_OPENTHREAD_PLATFORM_DEEP_SLEEP
+	/* Sleep while already SLEEP is a no-op; this test never leaves SLEEP via stop(). */
+	zassert_equal(0, stop_mock_fake.call_count);
+#else
 	zassert_equal(2, stop_mock_fake.call_count);
 	zassert_equal_ptr(radio, stop_mock_fake.arg0_val);
+#endif
 }
+
+#ifdef CONFIG_OPENTHREAD_PLATFORM_DEEP_SLEEP
+void handle_radio_event(const struct device *dev, enum ieee802154_event evt, void *event_params);
+
+/**
+ * @brief Deep-sleep radio sleep and RX_OFF semantics
+ *
+ * Sleep is idempotent, state is set before stop(), and RX_OFF outside RECEIVE
+ * does not re-queue sleep. RECEIVE counts as pending radio activity.
+ */
+ZTEST(openthread_radio, test_radio_deep_sleep_semantics)
+{
+	const uint8_t channel = 12;
+
+	zassert_equal(otPlatRadioEnable(ot), OT_ERROR_NONE, "Enabling radio failed.");
+	zassert_false(platformRadioIsPending(), "Idle SLEEP should not be pending.");
+
+	zassert_equal(otPlatRadioSleep(ot), OT_ERROR_NONE, "Sleep while SLEEP failed.");
+	zassert_equal(0, stop_mock_fake.call_count, "Idempotent sleep must not call stop().");
+
+	zassert_equal(otPlatRadioReceive(ot, channel), OT_ERROR_NONE, "Failed to receive.");
+	zassert_true(platformRadioIsPending(), "RECEIVE should report pending.");
+
+	zassert_equal(otPlatRadioSleep(ot), OT_ERROR_NONE, "Sleep from RECEIVE failed.");
+	zassert_equal(1, stop_mock_fake.call_count, "Sleep from RECEIVE must call stop() once.");
+	zassert_false(platformRadioIsPending(), "SLEEP should not be pending.");
+
+	zassert_equal(otPlatRadioSleep(ot), OT_ERROR_NONE, "Second sleep while SLEEP failed.");
+	zassert_equal(1, stop_mock_fake.call_count, "Second sleep must not call stop() again.");
+
+	handle_radio_event(radio, IEEE802154_EVENT_RX_OFF, NULL);
+	platformRadioProcess(ot);
+	zassert_equal(1, stop_mock_fake.call_count,
+		      "RX_OFF while SLEEP must not re-enter stop().");
+}
+#endif /* CONFIG_OPENTHREAD_PLATFORM_DEEP_SLEEP */
 
 static uint16_t custom_filter_mock_pan_id;
 static uint16_t custom_filter_mock_short_addr;
